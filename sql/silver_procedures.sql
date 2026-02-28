@@ -18,7 +18,7 @@
 
 
 -- ── 1. sp_load_games ──────────────────────────────────────────
--- Source : bronze_2.bronze_nhl_score  → $.games[*]
+-- Source : bronze_schema.bronze_nhl_game_detail → landing_json
 -- Target : silver_games
 -- Filter : gameType=2 (regular season), gameState IN ('OFF','FINAL')
 -- ─────────────────────────────────────────────────────────────
@@ -44,8 +44,8 @@ BEGIN
             jt.venue_location,
             TO_TIMESTAMP(REPLACE(jt.start_time_utc, 'Z', ''),
                          'YYYY-MM-DD"T"HH24:MI:SS')          AS start_time_utc
-        FROM   bronze_2.bronze_nhl_score bns
-        CROSS JOIN JSON_TABLE(bns.raw_response, '$.games[*]' COLUMNS (
+        FROM   bronze_schema.bronze_nhl_game_detail bngd
+        CROSS JOIN JSON_TABLE(bngd.landing_json, '$' COLUMNS (
             game_id           NUMBER         PATH '$.id',
             game_date_s       VARCHAR2(20)   PATH '$.gameDate',
             season            NUMBER         PATH '$.season',
@@ -62,7 +62,7 @@ BEGIN
             venue_location    VARCHAR2(200)  PATH '$.venueLocation.default',
             start_time_utc    VARCHAR2(30)   PATH '$.startTimeUTC'
         )) jt
-        WHERE  (p_wm IS NULL OR bns.loaded_at > p_wm)
+        WHERE  (p_wm IS NULL OR bngd.loaded_at > p_wm)
           AND  jt.game_type  = 2
           AND  jt.game_state IN ('OFF', 'FINAL')
           AND  jt.game_id    IS NOT NULL
@@ -103,7 +103,7 @@ END sp_load_games;
 
 
 -- ── 2. sp_load_players ────────────────────────────────────────
--- Source : bronze_2.bronze_nhl_boxscore → playerByGameStats.*Team.{forwards|defense|goalies}[*]
+-- Source : bronze_schema.bronze_nhl_game_detail → boxscore_json.playerByGameStats.*Team.{forwards|defense|goalies}[*]
 -- Target : silver_players  (incremental dim — upsert on sweater number change)
 -- Note   : Must run BEFORE sp_load_goals / sp_load_skater_stats / sp_load_goalie_stats
 --          because those tables FK back to silver_players.player_id
@@ -130,14 +130,14 @@ BEGIN
                         THEN SUBSTR(jt.player_name, INSTR(jt.player_name, ' ', -1) + 1)
                         ELSE jt.player_name END AS last_name,
                    jt.position, jt.sweater_no
-            FROM   bronze_2.bronze_nhl_boxscore bnb
-            CROSS JOIN JSON_TABLE(bnb.raw_response,
+            FROM   bronze_schema.bronze_nhl_game_detail bngd
+            CROSS JOIN JSON_TABLE(bngd.boxscore_json,
                 '$.playerByGameStats.homeTeam.forwards[*]' COLUMNS (
                     player_id  NUMBER        PATH '$.playerId',
                     player_name VARCHAR2(155) PATH '$.name.default',
                     position   VARCHAR2(5)   PATH '$.position',
                     sweater_no NUMBER        PATH '$.sweaterNumber')) jt
-            WHERE  (p_wm IS NULL OR bnb.loaded_at > p_wm) AND jt.player_id IS NOT NULL
+            WHERE  (p_wm IS NULL OR bngd.loaded_at > p_wm) AND jt.player_id IS NOT NULL
             UNION ALL
             SELECT jt.player_id,
                    CASE WHEN INSTR(jt.player_name, ' ') > 0
@@ -147,14 +147,14 @@ BEGIN
                         THEN SUBSTR(jt.player_name, INSTR(jt.player_name, ' ', -1) + 1)
                         ELSE jt.player_name END AS last_name,
                    jt.position, jt.sweater_no
-            FROM   bronze_2.bronze_nhl_boxscore bnb
-            CROSS JOIN JSON_TABLE(bnb.raw_response,
+            FROM   bronze_schema.bronze_nhl_game_detail bngd
+            CROSS JOIN JSON_TABLE(bngd.boxscore_json,
                 '$.playerByGameStats.homeTeam.defense[*]' COLUMNS (
                     player_id  NUMBER        PATH '$.playerId',
                     player_name VARCHAR2(155) PATH '$.name.default',
                     position   VARCHAR2(5)   PATH '$.position',
                     sweater_no NUMBER        PATH '$.sweaterNumber')) jt
-            WHERE  (p_wm IS NULL OR bnb.loaded_at > p_wm) AND jt.player_id IS NOT NULL
+            WHERE  (p_wm IS NULL OR bngd.loaded_at > p_wm) AND jt.player_id IS NOT NULL
             UNION ALL
             SELECT jt.player_id,
                    CASE WHEN INSTR(jt.player_name, ' ') > 0
@@ -164,13 +164,13 @@ BEGIN
                         THEN SUBSTR(jt.player_name, INSTR(jt.player_name, ' ', -1) + 1)
                         ELSE jt.player_name END AS last_name,
                    'G' AS position, jt.sweater_no
-            FROM   bronze_2.bronze_nhl_boxscore bnb
-            CROSS JOIN JSON_TABLE(bnb.raw_response,
+            FROM   bronze_schema.bronze_nhl_game_detail bngd
+            CROSS JOIN JSON_TABLE(bngd.boxscore_json,
                 '$.playerByGameStats.homeTeam.goalies[*]' COLUMNS (
                     player_id  NUMBER        PATH '$.playerId',
                     player_name VARCHAR2(155) PATH '$.name.default',
                     sweater_no NUMBER        PATH '$.sweaterNumber')) jt
-            WHERE  (p_wm IS NULL OR bnb.loaded_at > p_wm) AND jt.player_id IS NOT NULL
+            WHERE  (p_wm IS NULL OR bngd.loaded_at > p_wm) AND jt.player_id IS NOT NULL
             UNION ALL
             SELECT jt.player_id,
                    CASE WHEN INSTR(jt.player_name, ' ') > 0
@@ -180,14 +180,14 @@ BEGIN
                         THEN SUBSTR(jt.player_name, INSTR(jt.player_name, ' ', -1) + 1)
                         ELSE jt.player_name END AS last_name,
                    jt.position, jt.sweater_no
-            FROM   bronze_2.bronze_nhl_boxscore bnb
-            CROSS JOIN JSON_TABLE(bnb.raw_response,
+            FROM   bronze_schema.bronze_nhl_game_detail bngd
+            CROSS JOIN JSON_TABLE(bngd.boxscore_json,
                 '$.playerByGameStats.awayTeam.forwards[*]' COLUMNS (
                     player_id  NUMBER        PATH '$.playerId',
                     player_name VARCHAR2(155) PATH '$.name.default',
                     position   VARCHAR2(5)   PATH '$.position',
                     sweater_no NUMBER        PATH '$.sweaterNumber')) jt
-            WHERE  (p_wm IS NULL OR bnb.loaded_at > p_wm) AND jt.player_id IS NOT NULL
+            WHERE  (p_wm IS NULL OR bngd.loaded_at > p_wm) AND jt.player_id IS NOT NULL
             UNION ALL
             SELECT jt.player_id,
                    CASE WHEN INSTR(jt.player_name, ' ') > 0
@@ -197,14 +197,14 @@ BEGIN
                         THEN SUBSTR(jt.player_name, INSTR(jt.player_name, ' ', -1) + 1)
                         ELSE jt.player_name END AS last_name,
                    jt.position, jt.sweater_no
-            FROM   bronze_2.bronze_nhl_boxscore bnb
-            CROSS JOIN JSON_TABLE(bnb.raw_response,
+            FROM   bronze_schema.bronze_nhl_game_detail bngd
+            CROSS JOIN JSON_TABLE(bngd.boxscore_json,
                 '$.playerByGameStats.awayTeam.defense[*]' COLUMNS (
                     player_id  NUMBER        PATH '$.playerId',
                     player_name VARCHAR2(155) PATH '$.name.default',
                     position   VARCHAR2(5)   PATH '$.position',
                     sweater_no NUMBER        PATH '$.sweaterNumber')) jt
-            WHERE  (p_wm IS NULL OR bnb.loaded_at > p_wm) AND jt.player_id IS NOT NULL
+            WHERE  (p_wm IS NULL OR bngd.loaded_at > p_wm) AND jt.player_id IS NOT NULL
             UNION ALL
             SELECT jt.player_id,
                    CASE WHEN INSTR(jt.player_name, ' ') > 0
@@ -214,13 +214,13 @@ BEGIN
                         THEN SUBSTR(jt.player_name, INSTR(jt.player_name, ' ', -1) + 1)
                         ELSE jt.player_name END AS last_name,
                    'G' AS position, jt.sweater_no
-            FROM   bronze_2.bronze_nhl_boxscore bnb
-            CROSS JOIN JSON_TABLE(bnb.raw_response,
+            FROM   bronze_schema.bronze_nhl_game_detail bngd
+            CROSS JOIN JSON_TABLE(bngd.boxscore_json,
                 '$.playerByGameStats.awayTeam.goalies[*]' COLUMNS (
                     player_id  NUMBER        PATH '$.playerId',
                     player_name VARCHAR2(155) PATH '$.name.default',
                     sweater_no NUMBER        PATH '$.sweaterNumber')) jt
-            WHERE  (p_wm IS NULL OR bnb.loaded_at > p_wm) AND jt.player_id IS NOT NULL
+            WHERE  (p_wm IS NULL OR bngd.loaded_at > p_wm) AND jt.player_id IS NOT NULL
         )
         GROUP BY player_id
     ) src
@@ -247,7 +247,7 @@ END sp_load_players;
 
 
 -- ── 3. sp_load_goals ──────────────────────────────────────────
--- Source : bronze_2.bronze_nhl_landing → $.summary.scoring[*].goals[*]
+-- Source : bronze_schema.bronze_nhl_game_detail → landing_json.summary.scoring[*].goals[*]
 -- Target : silver_goals
 -- Note   : Nested JSON_TABLE: scoring periods → goals within each period
 -- ─────────────────────────────────────────────────────────────
@@ -257,7 +257,7 @@ BEGIN
     MERGE INTO silver_goals sg
     USING (
         SELECT
-            bnl.game_id,
+            bngd.game_id,
             jt.period_num        AS period,
             jt.time_in_period,
             jt.event_id,
@@ -276,8 +276,8 @@ BEGIN
             jt.assist2_id,
             jt.assist2_first,
             jt.assist2_last
-        FROM   bronze_2.bronze_nhl_landing bnl
-        CROSS JOIN JSON_TABLE(bnl.raw_response, '$.summary.scoring[*]' COLUMNS (
+        FROM   bronze_schema.bronze_nhl_game_detail bngd
+        CROSS JOIN JSON_TABLE(bngd.landing_json, '$.summary.scoring[*]' COLUMNS (
             period_num      NUMBER        PATH '$.periodDescriptor.number',
             NESTED PATH '$.goals[*]' COLUMNS (
                 event_id        NUMBER        PATH '$.eventId',
@@ -299,10 +299,10 @@ BEGIN
                 assist2_last    VARCHAR2(100) PATH '$.assists[1].lastName.default'
             )
         )) jt
-        WHERE  (p_wm IS NULL OR bnl.loaded_at > p_wm)
+        WHERE  (p_wm IS NULL OR bngd.loaded_at > p_wm)
           AND  jt.event_id  IS NOT NULL
           -- Only insert if parent game exists in silver_games
-          AND  EXISTS (SELECT 1 FROM silver_games sg2 WHERE sg2.game_id = bnl.game_id)
+          AND  EXISTS (SELECT 1 FROM silver_games sg2 WHERE sg2.game_id = bngd.game_id)
     ) src
     ON (sg.game_id = src.game_id AND sg.event_id = src.event_id)
     WHEN NOT MATCHED THEN INSERT (
@@ -333,7 +333,7 @@ END sp_load_goals;
 
 
 -- ── 4. sp_load_penalties ──────────────────────────────────────
--- Source : bronze_2.bronze_nhl_landing → $.summary.penalties[*].penalties[*]
+-- Source : bronze_schema.bronze_nhl_game_detail → landing_json.summary.penalties[*].penalties[*]
 -- Target : silver_penalties
 -- Note   : Nested JSON_TABLE: penalty periods → calls within each period
 --          committedByPlayer / drawnBy may be object or simple string in API;
@@ -349,7 +349,7 @@ BEGIN
         penalty_type, duration, desc_key
     )
     SELECT
-        bnl.game_id,
+        bngd.game_id,
         jt.period_num,
         jt.time_in_period,
         jt.team_abbrev,
@@ -362,8 +362,8 @@ BEGIN
         jt.penalty_type,
         jt.duration,
         jt.desc_key
-    FROM   bronze_2.bronze_nhl_landing bnl
-    CROSS JOIN JSON_TABLE(bnl.raw_response, '$.summary.penalties[*]' COLUMNS (
+    FROM   bronze_schema.bronze_nhl_game_detail bngd
+    CROSS JOIN JSON_TABLE(bngd.landing_json, '$.summary.penalties[*]' COLUMNS (
         period_num      NUMBER        PATH '$.periodDescriptor.number',
         NESTED PATH '$.penalties[*]' COLUMNS (
             time_in_period   VARCHAR2(10)  PATH '$.timeInPeriod',
@@ -379,12 +379,12 @@ BEGIN
             desc_key         VARCHAR2(100) PATH '$.descKey'
         )
     )) jt
-    WHERE  (p_wm IS NULL OR bnl.loaded_at > p_wm)
-      AND  EXISTS (SELECT 1 FROM silver_games sg WHERE sg.game_id = bnl.game_id)
+    WHERE  (p_wm IS NULL OR bngd.loaded_at > p_wm)
+      AND  EXISTS (SELECT 1 FROM silver_games sg WHERE sg.game_id = bngd.game_id)
       -- Skip rows already loaded for this game (no UNIQUE on penalties — use game presence)
       AND  NOT EXISTS (
                SELECT 1 FROM silver_penalties sp2
-               WHERE sp2.game_id = bnl.game_id
+               WHERE sp2.game_id = bngd.game_id
            );
 
     v_rows := SQL%ROWCOUNT;
@@ -400,7 +400,7 @@ END sp_load_penalties;
 
 
 -- ── 5. sp_load_three_stars ────────────────────────────────────
--- Source : bronze_2.bronze_nhl_landing → $.summary.threeStars[*]
+-- Source : bronze_schema.bronze_nhl_game_detail → landing_json.summary.threeStars[*]
 -- Target : silver_three_stars
 -- ─────────────────────────────────────────────────────────────
 CREATE OR REPLACE PROCEDURE sp_load_three_stars (p_wm IN TIMESTAMP DEFAULT NULL) AS
@@ -409,7 +409,7 @@ BEGIN
     MERGE INTO silver_three_stars ts
     USING (
         SELECT
-            bnl.game_id,
+            bngd.game_id,
             jt.star_rank,
             jt.player_id,
             jt.player_name,
@@ -419,8 +419,8 @@ BEGIN
             jt.goals,
             jt.assists,
             jt.points
-        FROM   bronze_2.bronze_nhl_landing bnl
-        CROSS JOIN JSON_TABLE(bnl.raw_response, '$.summary.threeStars[*]' COLUMNS (
+        FROM   bronze_schema.bronze_nhl_game_detail bngd
+        CROSS JOIN JSON_TABLE(bngd.landing_json, '$.summary.threeStars[*]' COLUMNS (
             star_rank    NUMBER        PATH '$.star',
             player_id    NUMBER        PATH '$.playerId',
             player_name  VARCHAR2(100) PATH '$.name.default',
@@ -431,9 +431,9 @@ BEGIN
             assists      NUMBER        PATH '$.assists',
             points       NUMBER        PATH '$.points'
         )) jt
-        WHERE  (p_wm IS NULL OR bnl.loaded_at > p_wm)
+        WHERE  (p_wm IS NULL OR bngd.loaded_at > p_wm)
           AND  jt.star_rank IS NOT NULL
-          AND  EXISTS (SELECT 1 FROM silver_games sg WHERE sg.game_id = bnl.game_id)
+          AND  EXISTS (SELECT 1 FROM silver_games sg WHERE sg.game_id = bngd.game_id)
     ) src
     ON (ts.game_id = src.game_id AND ts.star_rank = src.star_rank)
     WHEN NOT MATCHED THEN INSERT (
@@ -458,7 +458,7 @@ END sp_load_three_stars;
 
 
 -- ── 6. sp_load_skater_stats ───────────────────────────────────
--- Source : bronze_2.bronze_nhl_boxscore → playerByGameStats.*Team.{forwards|defense}[*]
+-- Source : bronze_schema.bronze_nhl_game_detail → boxscore_json.playerByGameStats.*Team.{forwards|defense}[*]
 -- Target : silver_skater_stats
 -- Note   : JSON_VALUE() pulls team abbrev from the top-level boxscore object
 --          alongside each position group's player rows.
@@ -476,8 +476,8 @@ BEGIN
                shifts, toi, faceoff_pct
         FROM (
             -- Home forwards
-            SELECT bnb.game_id,
-                   JSON_VALUE(bnb.raw_response, '$.homeTeam.abbrev') AS team_abbrev,
+            SELECT bngd.game_id,
+                   JSON_VALUE(bngd.boxscore_json, '$.homeTeam.abbrev') AS team_abbrev,
                    'H'   AS home_away,
                    jt.player_id,
                    CASE WHEN INSTR(jt.player_name, ' ') > 0
@@ -490,8 +490,8 @@ BEGIN
                    jt.goals, jt.assists, jt.points, jt.plus_minus, jt.pim, jt.hits,
                    jt.pp_goals, jt.shots, jt.blocked, jt.giveaways, jt.takeaways,
                    jt.shifts, jt.toi, jt.faceoff_pct
-            FROM   bronze_2.bronze_nhl_boxscore bnb
-            CROSS JOIN JSON_TABLE(bnb.raw_response,
+            FROM   bronze_schema.bronze_nhl_game_detail bngd
+            CROSS JOIN JSON_TABLE(bngd.boxscore_json,
                 '$.playerByGameStats.homeTeam.forwards[*]' COLUMNS (
                     player_id   NUMBER        PATH '$.playerId',
                     player_name VARCHAR2(155) PATH '$.name.default',
@@ -512,11 +512,11 @@ BEGIN
                     toi         VARCHAR2(10)  PATH '$.toi',
                     faceoff_pct NUMBER        PATH '$.faceoffWinningPctg'
                 )) jt
-            WHERE (p_wm IS NULL OR bnb.loaded_at > p_wm) AND jt.player_id IS NOT NULL
+            WHERE (p_wm IS NULL OR bngd.loaded_at > p_wm) AND jt.player_id IS NOT NULL
             UNION ALL
             -- Home defense
-            SELECT bnb.game_id,
-                   JSON_VALUE(bnb.raw_response, '$.homeTeam.abbrev') AS team_abbrev,
+            SELECT bngd.game_id,
+                   JSON_VALUE(bngd.boxscore_json, '$.homeTeam.abbrev') AS team_abbrev,
                    'H',
                    jt.player_id,
                    CASE WHEN INSTR(jt.player_name, ' ') > 0
@@ -529,8 +529,8 @@ BEGIN
                    jt.goals, jt.assists, jt.points, jt.plus_minus, jt.pim, jt.hits,
                    jt.pp_goals, jt.shots, jt.blocked, jt.giveaways, jt.takeaways,
                    jt.shifts, jt.toi, jt.faceoff_pct
-            FROM   bronze_2.bronze_nhl_boxscore bnb
-            CROSS JOIN JSON_TABLE(bnb.raw_response,
+            FROM   bronze_schema.bronze_nhl_game_detail bngd
+            CROSS JOIN JSON_TABLE(bngd.boxscore_json,
                 '$.playerByGameStats.homeTeam.defense[*]' COLUMNS (
                     player_id   NUMBER        PATH '$.playerId',
                     player_name VARCHAR2(155) PATH '$.name.default',
@@ -551,11 +551,11 @@ BEGIN
                     toi         VARCHAR2(10)  PATH '$.toi',
                     faceoff_pct NUMBER        PATH '$.faceoffWinningPctg'
                 )) jt
-            WHERE (p_wm IS NULL OR bnb.loaded_at > p_wm) AND jt.player_id IS NOT NULL
+            WHERE (p_wm IS NULL OR bngd.loaded_at > p_wm) AND jt.player_id IS NOT NULL
             UNION ALL
             -- Away forwards
-            SELECT bnb.game_id,
-                   JSON_VALUE(bnb.raw_response, '$.awayTeam.abbrev') AS team_abbrev,
+            SELECT bngd.game_id,
+                   JSON_VALUE(bngd.boxscore_json, '$.awayTeam.abbrev') AS team_abbrev,
                    'A',
                    jt.player_id,
                    CASE WHEN INSTR(jt.player_name, ' ') > 0
@@ -568,8 +568,8 @@ BEGIN
                    jt.goals, jt.assists, jt.points, jt.plus_minus, jt.pim, jt.hits,
                    jt.pp_goals, jt.shots, jt.blocked, jt.giveaways, jt.takeaways,
                    jt.shifts, jt.toi, jt.faceoff_pct
-            FROM   bronze_2.bronze_nhl_boxscore bnb
-            CROSS JOIN JSON_TABLE(bnb.raw_response,
+            FROM   bronze_schema.bronze_nhl_game_detail bngd
+            CROSS JOIN JSON_TABLE(bngd.boxscore_json,
                 '$.playerByGameStats.awayTeam.forwards[*]' COLUMNS (
                     player_id   NUMBER        PATH '$.playerId',
                     player_name VARCHAR2(155) PATH '$.name.default',
@@ -590,11 +590,11 @@ BEGIN
                     toi         VARCHAR2(10)  PATH '$.toi',
                     faceoff_pct NUMBER        PATH '$.faceoffWinningPctg'
                 )) jt
-            WHERE (p_wm IS NULL OR bnb.loaded_at > p_wm) AND jt.player_id IS NOT NULL
+            WHERE (p_wm IS NULL OR bngd.loaded_at > p_wm) AND jt.player_id IS NOT NULL
             UNION ALL
             -- Away defense
-            SELECT bnb.game_id,
-                   JSON_VALUE(bnb.raw_response, '$.awayTeam.abbrev') AS team_abbrev,
+            SELECT bngd.game_id,
+                   JSON_VALUE(bngd.boxscore_json, '$.awayTeam.abbrev') AS team_abbrev,
                    'A',
                    jt.player_id,
                    CASE WHEN INSTR(jt.player_name, ' ') > 0
@@ -607,8 +607,8 @@ BEGIN
                    jt.goals, jt.assists, jt.points, jt.plus_minus, jt.pim, jt.hits,
                    jt.pp_goals, jt.shots, jt.blocked, jt.giveaways, jt.takeaways,
                    jt.shifts, jt.toi, jt.faceoff_pct
-            FROM   bronze_2.bronze_nhl_boxscore bnb
-            CROSS JOIN JSON_TABLE(bnb.raw_response,
+            FROM   bronze_schema.bronze_nhl_game_detail bngd
+            CROSS JOIN JSON_TABLE(bngd.boxscore_json,
                 '$.playerByGameStats.awayTeam.defense[*]' COLUMNS (
                     player_id   NUMBER        PATH '$.playerId',
                     player_name VARCHAR2(155) PATH '$.name.default',
@@ -629,7 +629,7 @@ BEGIN
                     toi         VARCHAR2(10)  PATH '$.toi',
                     faceoff_pct NUMBER        PATH '$.faceoffWinningPctg'
                 )) jt
-            WHERE (p_wm IS NULL OR bnb.loaded_at > p_wm) AND jt.player_id IS NOT NULL
+            WHERE (p_wm IS NULL OR bngd.loaded_at > p_wm) AND jt.player_id IS NOT NULL
         )
         WHERE EXISTS (SELECT 1 FROM silver_games sg WHERE sg.game_id = game_id)
     ) src
@@ -668,7 +668,7 @@ END sp_load_skater_stats;
 
 
 -- ── 7. sp_load_goalie_stats ───────────────────────────────────
--- Source : bronze_2.bronze_nhl_boxscore → playerByGameStats.*Team.goalies[*]
+-- Source : bronze_schema.bronze_nhl_game_detail → boxscore_json.playerByGameStats.*Team.goalies[*]
 -- Target : silver_goalie_stats
 -- Note   : $.starter may be integer (1/0) or boolean; mapped to 'Y'/'N'.
 --          ES/PP/SH split paths: verify against actual bronze if NULL values appear.
@@ -684,15 +684,15 @@ BEGIN
                pim, starter_raw
         FROM (
             -- Home goalies
-            SELECT bnb.game_id,
-                   JSON_VALUE(bnb.raw_response, '$.homeTeam.abbrev') AS team_abbrev,
+            SELECT bngd.game_id,
+                   JSON_VALUE(bngd.boxscore_json, '$.homeTeam.abbrev') AS team_abbrev,
                    'H'   AS home_away,
                    jt.player_id, jt.sweater_no,
                    jt.toi, jt.shots_against, jt.saves, jt.goals_against,
                    jt.es_shots, jt.es_goals, jt.pp_shots, jt.pp_goals_ag,
                    jt.sh_shots, jt.sh_goals, jt.pim, jt.starter_raw
-            FROM   bronze_2.bronze_nhl_boxscore bnb
-            CROSS JOIN JSON_TABLE(bnb.raw_response,
+            FROM   bronze_schema.bronze_nhl_game_detail bngd
+            CROSS JOIN JSON_TABLE(bngd.boxscore_json,
                 '$.playerByGameStats.homeTeam.goalies[*]' COLUMNS (
                     player_id     NUMBER       PATH '$.playerId',
                     sweater_no    NUMBER       PATH '$.sweaterNumber',
@@ -709,18 +709,18 @@ BEGIN
                     pim           NUMBER       PATH '$.pim',
                     starter_raw   NUMBER       PATH '$.starter'
                 )) jt
-            WHERE (p_wm IS NULL OR bnb.loaded_at > p_wm) AND jt.player_id IS NOT NULL
+            WHERE (p_wm IS NULL OR bngd.loaded_at > p_wm) AND jt.player_id IS NOT NULL
             UNION ALL
             -- Away goalies
-            SELECT bnb.game_id,
-                   JSON_VALUE(bnb.raw_response, '$.awayTeam.abbrev') AS team_abbrev,
+            SELECT bngd.game_id,
+                   JSON_VALUE(bngd.boxscore_json, '$.awayTeam.abbrev') AS team_abbrev,
                    'A',
                    jt.player_id, jt.sweater_no,
                    jt.toi, jt.shots_against, jt.saves, jt.goals_against,
                    jt.es_shots, jt.es_goals, jt.pp_shots, jt.pp_goals_ag,
                    jt.sh_shots, jt.sh_goals, jt.pim, jt.starter_raw
-            FROM   bronze_2.bronze_nhl_boxscore bnb
-            CROSS JOIN JSON_TABLE(bnb.raw_response,
+            FROM   bronze_schema.bronze_nhl_game_detail bngd
+            CROSS JOIN JSON_TABLE(bngd.boxscore_json,
                 '$.playerByGameStats.awayTeam.goalies[*]' COLUMNS (
                     player_id     NUMBER       PATH '$.playerId',
                     sweater_no    NUMBER       PATH '$.sweaterNumber',
@@ -737,7 +737,7 @@ BEGIN
                     pim           NUMBER       PATH '$.pim',
                     starter_raw   NUMBER       PATH '$.starter'
                 )) jt
-            WHERE (p_wm IS NULL OR bnb.loaded_at > p_wm) AND jt.player_id IS NOT NULL
+            WHERE (p_wm IS NULL OR bngd.loaded_at > p_wm) AND jt.player_id IS NOT NULL
         )
         WHERE EXISTS (SELECT 1 FROM silver_games sg WHERE sg.game_id = game_id)
     ) src
@@ -778,7 +778,7 @@ END sp_load_goalie_stats;
 
 
 -- ── 8. sp_load_espn_meta ──────────────────────────────────────
--- Source : bronze_2.bronze_espn_scoreboard → $.events[*]
+-- Source : bronze_schema.bronze_espn_daily → raw_response.events[*]
 -- Target : silver_espn_game_meta
 -- Note   : ESPN uses competitor[0/1] arrays; home/away determined by $.homeAway field.
 --          nhl_game_id resolved by matching silver_games on game_date + team abbreviation.
@@ -827,8 +827,8 @@ BEGIN
                 CASE WHEN jt.c0_homeaway = 'away' THEN jt.c0_abbrev ELSE jt.c1_abbrev END  AS away_abbrev,
                 CASE WHEN jt.c0_homeaway = 'home' THEN jt.c0_score  ELSE jt.c1_score  END  AS home_score,
                 CASE WHEN jt.c0_homeaway = 'away' THEN jt.c0_score  ELSE jt.c1_score  END  AS away_score
-            FROM   bronze_2.bronze_espn_scoreboard bes
-            CROSS JOIN JSON_TABLE(bes.raw_response, '$.events[*]' COLUMNS (
+            FROM   bronze_schema.bronze_espn_daily bed
+            CROSS JOIN JSON_TABLE(bed.raw_response, '$.events[*]' COLUMNS (
                 espn_game_id    VARCHAR2(20)   PATH '$.id',
                 game_date_s     VARCHAR2(30)   PATH '$.date',
                 venue_name      VARCHAR2(200)  PATH '$.competitions[0].venue.fullName',
@@ -846,7 +846,7 @@ BEGIN
                 c1_abbrev       VARCHAR2(10)   PATH '$.competitions[0].competitors[1].team.abbreviation',
                 c1_score        VARCHAR2(10)   PATH '$.competitions[0].competitors[1].score'
             )) jt
-            WHERE  (p_wm IS NULL OR bes.loaded_at > p_wm)
+            WHERE  (p_wm IS NULL OR bed.loaded_at > p_wm)
               AND  jt.espn_game_id IS NOT NULL
         ) src_inner
     ) src
@@ -882,7 +882,7 @@ END sp_load_espn_meta;
 
 
 -- ── 9. sp_load_global_games ───────────────────────────────────
--- Source : bronze_2.bronze_sportdb_flashscore → $[*]  (top-level array)
+-- Source : bronze_schema.bronze_sportdb_daily → raw_response[*]  (top-level array)
 -- Target : silver_global_games
 -- Note   : raw_response is a JSON array (list of game objects).
 --          startTimestamp is a Unix epoch integer → stored as-is in VARCHAR2.
@@ -894,7 +894,7 @@ BEGIN
     MERGE INTO silver_global_games gg
     USING (
         SELECT
-            bsf.game_date,
+            bsd.game_date,
             jt.event_id,
             jt.tournament_id,
             jt.tournament_name,
@@ -909,8 +909,8 @@ BEGIN
             jt.event_stage,
             jt.winner,
             TO_CHAR(jt.start_ts)   AS start_utc
-        FROM   bronze_2.bronze_sportdb_flashscore bsf
-        CROSS JOIN JSON_TABLE(bsf.raw_response, '$[*]' COLUMNS (
+        FROM   bronze_schema.bronze_sportdb_daily bsd
+        CROSS JOIN JSON_TABLE(bsd.raw_response, '$[*]' COLUMNS (
             event_id        VARCHAR2(20)  PATH '$.id',
             tournament_id   VARCHAR2(20)  PATH '$.tournament.id',
             tournament_name VARCHAR2(300) PATH '$.tournament.name',
@@ -929,7 +929,7 @@ BEGIN
             winner          VARCHAR2(5)   PATH '$.winner',
             start_ts        NUMBER        PATH '$.startTimestamp'
         )) jt
-        WHERE  (p_wm IS NULL OR bsf.loaded_at > p_wm)
+        WHERE  (p_wm IS NULL OR bsd.loaded_at > p_wm)
           AND  jt.event_id IS NOT NULL
     ) src
     ON (gg.event_id = src.event_id)
@@ -972,101 +972,69 @@ END sp_load_global_games;
 -- ─────────────────────────────────────────────────────────────
 CREATE OR REPLACE PROCEDURE sp_load_silver AS
     -- Current watermarks (where we left off last time)
-    v_wm_score    TIMESTAMP;
-    v_wm_landing  TIMESTAMP;
-    v_wm_boxscore TIMESTAMP;
+    v_wm_nhl      TIMESTAMP;  -- consolidated for BRONZE_NHL_GAME_DETAIL
     v_wm_espn     TIMESTAMP;
     v_wm_sportdb  TIMESTAMP;
     -- New high watermarks (max bronze loaded_at in this batch)
-    v_new_score    TIMESTAMP;
-    v_new_landing  TIMESTAMP;
-    v_new_boxscore TIMESTAMP;
+    v_new_nhl      TIMESTAMP;  -- consolidated for BRONZE_NHL_GAME_DETAIL
     v_new_espn     TIMESTAMP;
     v_new_sportdb  TIMESTAMP;
 BEGIN
     -- ── Read current watermarks ──────────────────────────────
-    SELECT last_bronze_ts INTO v_wm_score
-    FROM silver_watermarks WHERE source_table = 'bronze_nhl_score';
-
-    SELECT last_bronze_ts INTO v_wm_landing
-    FROM silver_watermarks WHERE source_table = 'bronze_nhl_landing';
-
-    SELECT last_bronze_ts INTO v_wm_boxscore
-    FROM silver_watermarks WHERE source_table = 'bronze_nhl_boxscore';
+    SELECT last_bronze_ts INTO v_wm_nhl
+    FROM silver_watermarks WHERE source_table = 'bronze_nhl_game_detail';
 
     SELECT last_bronze_ts INTO v_wm_espn
-    FROM silver_watermarks WHERE source_table = 'bronze_espn_scoreboard';
+    FROM silver_watermarks WHERE source_table = 'bronze_espn_daily';
 
     SELECT last_bronze_ts INTO v_wm_sportdb
-    FROM silver_watermarks WHERE source_table = 'bronze_sportdb_flashscore';
+    FROM silver_watermarks WHERE source_table = 'bronze_sportdb_daily';
 
     -- ── Capture new high-watermarks before running ───────────
     -- (snapshot MAX loaded_at of rows we are about to process)
-    SELECT MAX(loaded_at) INTO v_new_score
-    FROM bronze_2.bronze_nhl_score
-    WHERE (v_wm_score IS NULL OR loaded_at > v_wm_score);
-
-    SELECT MAX(loaded_at) INTO v_new_landing
-    FROM bronze_2.bronze_nhl_landing
-    WHERE (v_wm_landing IS NULL OR loaded_at > v_wm_landing);
-
-    SELECT MAX(loaded_at) INTO v_new_boxscore
-    FROM bronze_2.bronze_nhl_boxscore
-    WHERE (v_wm_boxscore IS NULL OR loaded_at > v_wm_boxscore);
+    SELECT MAX(loaded_at) INTO v_new_nhl
+    FROM bronze_schema.bronze_nhl_game_detail
+    WHERE (v_wm_nhl IS NULL OR loaded_at > v_wm_nhl);
 
     SELECT MAX(loaded_at) INTO v_new_espn
-    FROM bronze_2.bronze_espn_scoreboard
+    FROM bronze_schema.bronze_espn_daily
     WHERE (v_wm_espn IS NULL OR loaded_at > v_wm_espn);
 
     SELECT MAX(loaded_at) INTO v_new_sportdb
-    FROM bronze_2.bronze_sportdb_flashscore
+    FROM bronze_schema.bronze_sportdb_daily
     WHERE (v_wm_sportdb IS NULL OR loaded_at > v_wm_sportdb);
 
     -- ── Run sub-procedures in dependency order ───────────────
-    sp_load_games        (v_wm_score);
-    sp_load_players      (v_wm_boxscore);   -- must precede goals/stars/skater/goalie
-    sp_load_goals        (v_wm_landing);
-    sp_load_penalties    (v_wm_landing);
-    sp_load_three_stars  (v_wm_landing);
-    sp_load_skater_stats (v_wm_boxscore);
-    sp_load_goalie_stats (v_wm_boxscore);
+    sp_load_games        (v_wm_nhl);
+    sp_load_players      (v_wm_nhl);   -- must precede goals/stars/skater/goalie
+    sp_load_goals        (v_wm_nhl);
+    sp_load_penalties    (v_wm_nhl);
+    sp_load_three_stars  (v_wm_nhl);
+    sp_load_skater_stats (v_wm_nhl);
+    sp_load_goalie_stats (v_wm_nhl);
     sp_load_espn_meta    (v_wm_espn);       -- needs silver_games populated first
     sp_load_global_games (v_wm_sportdb);
 
     -- ── Advance watermarks (only when new data was processed) ─
     UPDATE silver_watermarks
-    SET    last_bronze_ts  = v_new_score,
+    SET    last_bronze_ts  = v_new_nhl,
            last_run_at     = SYSTIMESTAMP,
            rows_processed  = rows_processed + 1
-    WHERE  source_table = 'bronze_nhl_score'
-      AND  v_new_score IS NOT NULL;
-
-    UPDATE silver_watermarks
-    SET    last_bronze_ts  = v_new_landing,
-           last_run_at     = SYSTIMESTAMP,
-           rows_processed  = rows_processed + 1
-    WHERE  source_table = 'bronze_nhl_landing'
-      AND  v_new_landing IS NOT NULL;
-
-    UPDATE silver_watermarks
-    SET    last_bronze_ts  = v_new_boxscore,
-           last_run_at     = SYSTIMESTAMP,
-           rows_processed  = rows_processed + 1
-    WHERE  source_table = 'bronze_nhl_boxscore'
-      AND  v_new_boxscore IS NOT NULL;
+    WHERE  source_table = 'bronze_nhl_game_detail'
+      AND  v_new_nhl IS NOT NULL;
 
     UPDATE silver_watermarks
     SET    last_bronze_ts  = v_new_espn,
            last_run_at     = SYSTIMESTAMP,
            rows_processed  = rows_processed + 1
-    WHERE  source_table = 'bronze_espn_scoreboard'
+    WHERE  source_table = 'bronze_espn_daily'
       AND  v_new_espn IS NOT NULL;
 
     UPDATE silver_watermarks
     SET    last_bronze_ts  = v_new_sportdb,
            last_run_at     = SYSTIMESTAMP,
            rows_processed  = rows_processed + 1
-    WHERE  source_table = 'bronze_sportdb_flashscore'
+    WHERE  source_table = 'bronze_sportdb_daily'
       AND  v_new_sportdb IS NOT NULL;
 
     silver_log('sp_load_silver', 0, 0, 0, 'SUCCESS', 'Master run complete');
