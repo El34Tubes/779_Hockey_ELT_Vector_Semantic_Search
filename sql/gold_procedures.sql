@@ -41,9 +41,9 @@ BEGIN
             g.game_date,
             g.season,
             g.game_type,
-            ht.abbrev AS home_team_abbrev,
+            ht.team_abbrev AS home_team_abbrev,
             ht.full_name AS home_team_name,
-            at.abbrev AS away_team_abbrev,
+            at.team_abbrev AS away_team_abbrev,
             at.full_name AS away_team_name,
             g.home_score,
             g.away_score,
@@ -54,28 +54,27 @@ BEGIN
             END AS winner,
             ABS(g.home_score - g.away_score) AS margin,
             g.home_score + g.away_score AS total_goals,
-            CASE WHEN g.final_period > 3 THEN 'Y' ELSE 'N' END AS overtime_flag,
-            CASE WHEN g.shootout THEN 'Y' ELSE 'N' END AS shootout_flag,
-            g.final_period,
+            CASE WHEN g.last_period_type IN ('OT', 'SO') THEN 'Y' ELSE 'N' END AS overtime_flag,
+            CASE WHEN g.last_period_type = 'SO' THEN 'Y' ELSE 'N' END AS shootout_flag,
 
             -- Aggregated stats from penalties and goals
             (SELECT COUNT(*) FROM silver_schema.silver_penalties sp WHERE sp.game_id = g.game_id) AS total_penalties,
-            (SELECT NVL(SUM(pen_minutes),0) FROM silver_schema.silver_penalties sp WHERE sp.game_id = g.game_id) AS total_pim,
+            (SELECT NVL(SUM(duration),0) FROM silver_schema.silver_penalties sp WHERE sp.game_id = g.game_id) AS total_pim,
             g.home_sog AS home_shots,
             g.away_sog AS away_shots,
             g.home_sog + g.away_sog AS total_shots,
 
             -- Three stars (top 3 from silver_three_stars)
-            (SELECT full_name FROM silver_schema.silver_three_stars WHERE game_id=g.game_id AND star_rank=1 FETCH FIRST 1 ROW ONLY) AS star1_name,
+            (SELECT player_name FROM silver_schema.silver_three_stars WHERE game_id=g.game_id AND star_rank=1 FETCH FIRST 1 ROW ONLY) AS star1_name,
             (SELECT team_abbrev FROM silver_schema.silver_three_stars WHERE game_id=g.game_id AND star_rank=1 FETCH FIRST 1 ROW ONLY) AS star1_team,
-            (SELECT full_name FROM silver_schema.silver_three_stars WHERE game_id=g.game_id AND star_rank=2 FETCH FIRST 1 ROW ONLY) AS star2_name,
+            (SELECT player_name FROM silver_schema.silver_three_stars WHERE game_id=g.game_id AND star_rank=2 FETCH FIRST 1 ROW ONLY) AS star2_name,
             (SELECT team_abbrev FROM silver_schema.silver_three_stars WHERE game_id=g.game_id AND star_rank=2 FETCH FIRST 1 ROW ONLY) AS star2_team,
-            (SELECT full_name FROM silver_schema.silver_three_stars WHERE game_id=g.game_id AND star_rank=3 FETCH FIRST 1 ROW ONLY) AS star3_name,
+            (SELECT player_name FROM silver_schema.silver_three_stars WHERE game_id=g.game_id AND star_rank=3 FETCH FIRST 1 ROW ONLY) AS star3_name,
             (SELECT team_abbrev FROM silver_schema.silver_three_stars WHERE game_id=g.game_id AND star_rank=3 FETCH FIRST 1 ROW ONLY) AS star3_team
 
         FROM silver_schema.silver_games g
-        JOIN silver_schema.silver_teams ht ON g.home_team_id = ht.team_id
-        JOIN silver_schema.silver_teams at ON g.away_team_id = at.team_id
+        JOIN silver_schema.silver_teams ht ON g.home_team = ht.team_abbrev
+        JOIN silver_schema.silver_teams at ON g.away_team = at.team_abbrev
         WHERE (p_wm IS NULL OR g.loaded_at > p_wm)
           AND g.game_state IN ('OFF', 'FINAL')
     ) src
@@ -86,7 +85,7 @@ BEGIN
             game_id, game_date, season, game_type,
             home_team_abbrev, home_team_name, away_team_abbrev, away_team_name,
             home_score, away_score, winner, margin, total_goals,
-            overtime_flag, shootout_flag, final_period,
+            overtime_flag, shootout_flag,
             total_penalties, total_pim, home_shots, away_shots, total_shots,
             star1_name, star1_team, star2_name, star2_team, star3_name, star3_team,
             narrative_text, narrative_vector
@@ -94,7 +93,7 @@ BEGIN
             src.game_id, src.game_date, src.season, src.game_type,
             src.home_team_abbrev, src.home_team_name, src.away_team_abbrev, src.away_team_name,
             src.home_score, src.away_score, src.winner, src.margin, src.total_goals,
-            src.overtime_flag, src.shootout_flag, src.final_period,
+            src.overtime_flag, src.shootout_flag,
             src.total_penalties, src.total_pim, src.home_shots, src.away_shots, src.total_shots,
             src.star1_name, src.star1_team, src.star2_name, src.star2_team, src.star3_name, src.star3_team,
             NULL,  -- narrative_text (will be generated in next pass)
@@ -111,7 +110,7 @@ BEGIN
     v_rows := SQL%ROWCOUNT;
 
     -- Second pass: generate narratives and embeddings for games with NULL narrative_text
-    -- (This is a simplified approach - in production you'd batch this)
+    
     FOR rec IN (
         SELECT game_id, home_team_name, away_team_name, home_score, away_score,
                overtime_flag, total_goals, total_penalties,
@@ -274,29 +273,29 @@ BEGIN
     MERGE INTO gold_team_season_summary gtss
     USING (
         SELECT
-            t.abbrev AS team_abbrev,
+            t.team_abbrev,
             g.season,
             t.full_name AS team_name,
             COUNT(*) AS games_played,
-            SUM(CASE WHEN (g.home_team_id = t.team_id AND g.home_score > g.away_score)
-                      OR (g.away_team_id = t.team_id AND g.away_score > g.home_score)
+            SUM(CASE WHEN (g.home_team = t.team_abbrev AND g.home_score > g.away_score)
+                      OR (g.away_team = t.team_abbrev AND g.away_score > g.home_score)
                      THEN 1 ELSE 0 END) AS wins,
-            SUM(CASE WHEN (g.home_team_id = t.team_id AND g.home_score < g.away_score)
-                      OR (g.away_team_id = t.team_id AND g.away_score < g.home_score)
+            SUM(CASE WHEN (g.home_team = t.team_abbrev AND g.home_score < g.away_score)
+                      OR (g.away_team = t.team_abbrev AND g.away_score < g.home_score)
                      THEN 1 ELSE 0 END) AS losses,
-            SUM(CASE WHEN g.final_period > 3
-                      AND ((g.home_team_id = t.team_id AND g.home_score < g.away_score)
-                           OR (g.away_team_id = t.team_id AND g.away_score < g.home_score))
+            SUM(CASE WHEN g.last_period_type IN ('OT', 'SO')
+                      AND ((g.home_team = t.team_abbrev AND g.home_score < g.away_score)
+                           OR (g.away_team = t.team_abbrev AND g.away_score < g.home_score))
                      THEN 1 ELSE 0 END) AS ot_losses,
-            SUM(CASE WHEN g.home_team_id = t.team_id THEN g.home_score ELSE g.away_score END) AS goals_for,
-            SUM(CASE WHEN g.home_team_id = t.team_id THEN g.away_score ELSE g.home_score END) AS goals_against
+            SUM(CASE WHEN g.home_team = t.team_abbrev THEN g.home_score ELSE g.away_score END) AS goals_for,
+            SUM(CASE WHEN g.home_team = t.team_abbrev THEN g.away_score ELSE g.home_score END) AS goals_against
         FROM silver_schema.silver_teams t
         JOIN silver_schema.silver_games g
-            ON (g.home_team_id = t.team_id OR g.away_team_id = t.team_id)
+            ON (g.home_team = t.team_abbrev OR g.away_team = t.team_abbrev)
         WHERE (p_wm IS NULL OR g.loaded_at > p_wm)
           AND g.game_state IN ('OFF', 'FINAL')
           AND g.game_type = 2  -- Regular season only
-        GROUP BY t.abbrev, g.season, t.full_name
+        GROUP BY t.team_abbrev, g.season, t.full_name
     ) src
     ON (gtss.team_abbrev = src.team_abbrev AND gtss.season = src.season)
 
