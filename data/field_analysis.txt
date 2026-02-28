@@ -1,0 +1,215 @@
+COMPLETE FIELD INVENTORY
+================================================================================
+
+$[0].away3CharName
+  Type: str
+  Sample: MOG
+
+$[0].awayEventParticipantId
+  Type: str
+  Sample: 4Q19YoIt
+
+$[0].awayFirstName
+  Type: str
+  Sample: Mogilev
+
+$[0].awayFullTimeScore
+  Type: str
+  Sample: 1
+
+$[0].awayGoalUnderReview
+  Type: str
+  Sample: 0
+
+$[0].awayLogo
+  Type: str
+  Sample: https://static.flashscore.com/res/image/data/ILFF64Pq-4MXQFQFf.png
+
+$[0].awayName
+  Type: str
+  Sample: Mogilev
+
+$[0].awayParticipantIds
+  Type: str
+  Sample: OYagKE4J
+
+$[0].awayParticipantNameUrl
+  Type: str
+  Sample: mogilev
+
+$[0].awayResultPeriod1
+  Type: str
+  Sample: 0
+
+$[0].awayResultPeriod2
+  Type: str
+  Sample: 0
+
+$[0].awayResultPeriod3
+  Type: str
+  Sample: 1
+
+$[0].awayScore
+  Type: str
+  Sample: 1
+
+$[0].eventId
+  Type: str
+  Sample: IPEAcYKq
+
+$[0].eventStage
+  Type: str
+  Sample: FINISHED
+
+$[0].eventStageId
+  Type: str
+  Sample: 3
+
+$[0].eventStageTypeFromEventStageId
+  Type: str
+  Sample: 3
+
+$[0].eventStageTypeId
+  Type: str
+  Sample: 3
+
+$[0].ftWinner
+  Type: str
+  Sample: 1
+
+$[0].gameTime
+  Type: str
+  Sample: -1
+
+$[0].home3CharName
+  Type: str
+  Sample: NOV
+
+$[0].homeEventParticipantId
+  Type: str
+  Sample: lERaErXO
+
+$[0].homeFirstName
+  Type: str
+  Sample: Novopolotsk
+
+$[0].homeFullTimeScore
+  Type: str
+  Sample: 7
+
+$[0].homeGoalUnderReview
+  Type: str
+  Sample: 0
+
+$[0].homeLogo
+  Type: str
+  Sample: https://static.flashscore.com/res/image/data/zLtLPblC-rghzMoLn.png
+
+$[0].homeName
+  Type: str
+  Sample: Novopolotsk
+
+$[0].homeParticipantIds
+  Type: str
+  Sample: 2PbcJYJP
+
+$[0].homeParticipantNameUrl
+  Type: str
+  Sample: novopolotsk
+
+$[0].homeResultPeriod1
+  Type: str
+  Sample: 1
+
+$[0].homeResultPeriod2
+  Type: str
+  Sample: 3
+
+$[0].homeResultPeriod3
+  Type: str
+  Sample: 3
+
+$[0].homeScore
+  Type: str
+  Sample: 7
+
+$[0].lineps
+  Type: str
+  Sample: 1
+
+$[0].links
+  Type: dict
+  Sample: Object[3 keys]
+
+$[0].links.details
+  Type: str
+  Sample: /api/flashscore/match/IPEAcYKq/details
+
+$[0].links.lineups
+  Type: str
+  Sample: /api/flashscore/match/IPEAcYKq/lineups
+
+$[0].links.stats
+  Type: str
+  Sample: /api/flashscore/match/IPEAcYKq/stats
+
+$[0].playingOnSets
+  Type: str
+  Sample: 
+
+$[0].season
+  Type: NoneType
+  Sample: NoneType
+
+$[0].sortParticipant
+  Type: str
+  Sample: Novopolotsk
+
+$[0].sourceTypeOfGame
+  Type: str
+  Sample: 0
+
+$[0].stageStartUtime
+  Type: str
+  Sample: 1771350060
+
+$[0].startDateTimeUtc
+  Type: str
+  Sample: 2026-02-17T15:30:00.000Z
+
+$[0].startTime
+  Type: str
+  Sample: 1771342200
+
+$[0].startUtime
+  Type: str
+  Sample: 1771342200
+
+$[0].tournamentId
+  Type: str
+  Sample: E5HqKCLb
+
+$[0].tournamentName
+  Type: str
+  Sample: BELARUS: Extraleague
+
+$[0].tournamentStageId
+  Type: str
+  Sample: ITwAIO1b
+
+$[0].tournamentTemplateId
+  Type: str
+  Sample: v5J6hQUp
+
+$[0].tournamentType
+  Type: str
+  Sample: p
+
+$[0].visibleRunRate
+  Type: str
+  Sample: 0
+
+$[0].winner
+  Type: str
+  Sample: 1
+

@@ -1,0 +1,26 @@
+# John LaCroix - Claude Code Prompt Log
+# Project: NHL Semantic Analytics Platform
+# Course: BU 779 Advanced Database Management
+# Format: [timestamp] PROMPT: <text>
+# ============================================================
+
+[2026-02-17 SESSION 1]
+
+PROMPT: I'll create a complete downloadable project structure for you to run in VSCode.
+[Provided full project scaffold: nhl-semantic-analytics/ with README, requirements.txt,
+.env.example, .gitignore, config/, exploration/, data/, sql/, docs/]
+...i just installed claude code for vscode is there anything I can do to port this over there
+
+PROMPT: [Rejected .env.example creation] we aren't going to warehouse, we're going to build
+the vector DB directly on the OLTP
+
+PROMPT: [Rejected pip install] proceed
+
+PROMPT: [Provided API key] 6y24iVrW7kyKSA80U7jHuxiIOH4ZlNXp86YHc71H
+
+PROMPT: Before we proceed to the next step, create a file called john_lacroix_prompts.out
+that logs my prompts to claude code in the project. Once completed let's proceed with:
+We want to focus primarily on historical data, because we are keeping the scope to vector
+semantic searching for hockey. We certainly want all Identity, Teams, Scores, Status,
+Timing, and Tournament data - will we be able to get historical data here?
+

@@ -1,0 +1,17 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# SQL files
+*.sql text
+
+# Python files
+*.py text
+
+# Markdown files
+*.md text
+
+# JSON files
+*.json text
+
+# Log files - treat as text but don't diff
+*.log -diff
