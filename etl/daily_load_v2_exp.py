@@ -19,9 +19,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.db_connect import get_connection
 
-from etl.load_nhl_v2     import load_date as nhl_load_date,  load_season as nhl_load_season, AVAILABLE_SEASONS
-from etl.load_espn_v2    import load_date as espn_load_date, load_range  as espn_load_range, SEASON_DATE_RANGES
-from etl.load_sportdb_v2 import load_offset as sportdb_load_offset
+from etl.load_nhl_v2_exp     import load_date as nhl_load_date,  load_season as nhl_load_season, AVAILABLE_SEASONS
+from etl.load_espn_v2_exp    import load_date as espn_load_date, load_range  as espn_load_range, SEASON_DATE_RANGES
+from etl.load_sportdb_v2_exp import load_offset as sportdb_load_offset
 
 
 def run_daily(conn, sources: list):
