@@ -93,3 +93,5 @@ data/raw/
 data/processed/
 outputs/
 *.csv
+
+data/cache/
