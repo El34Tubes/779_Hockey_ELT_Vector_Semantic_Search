@@ -1,5 +1,92 @@
 # NHL Semantic Analytics - Test Results & Evaluation
 
+---
+
+## Bronze ETL Pipeline Benchmarks (March 2026)
+
+### Overview
+
+Benchmarked two Bronze ingestion strategies against the production `bronze_schema` (CLOB) pipeline across a full 6-season backfill (2020-21 through 2025-26).
+
+**Tool:** `etl/load_nhl_v3_exp.py` — two-phase Extract (API → disk) + Load (disk → Oracle)
+**Target schema:** `bronze_schema` (production) — `bronze_nhl_daily` + `bronze_nhl_game_detail`
+**Dataset:** 4,125 games, 6 seasons, ~100KB per game document (landing + boxscore combined)
+
+---
+
+### Benchmark 1: File-Staged vs Inline — Full 6-Season Backfill
+
+| Phase | Component | Time | Per-Row Avg |
+|---|---|---|---|
+| **Phase 1 — Extract (API → disk)** | NHL API fetch | 3,628s | ~0.88s/game |
+| | File write (131.7MB, 8,694 files) | 19s | 4.6ms/file |
+| | **Phase 1 total** | **3,647s** | |
+| **Phase 2 — Load (disk → Oracle)** | File read | 3.5s | 0.8ms/row |
+| | DB insert (CLOB) | 9.8s | 2.1ms/row |
+| | **Phase 2 total** | **13.3s** | |
+| **End-to-end total** | | **3,660s** | |
+
+**v1 inline baseline (API → Oracle directly):** ~3,638s
+
+| Approach | Total Time | Overhead |
+|---|---|---|
+| v1 inline (`load_nhl.py`) | ~3,638s | — |
+| v3 file-staged (`load_nhl_v3_exp.py`) | ~3,660s | +22.5s (+0.5%) |
+
+**Key finding:** File staging adds negligible overhead on first run (+0.5%), but enables cache reuse. A full reload from cached files takes **13.3s vs 3,638s** — a **273× speedup** for subsequent loads (schema migrations, table truncates, testing).
+
+---
+
+### Benchmark 2: CLOB vs OSON Insert Performance at Real Payload Sizes (~100KB/game)
+
+| Column Type | Insert Time | Avg ms/row | vs CLOB |
+|---|---|---|---|
+| **CLOB** (`json.dumps()` string bind) | 9.8s / 4,569 rows | **2.1ms** | baseline |
+| **OSON** (native `DB_TYPE_JSON` dict bind) | 618s / 4,125 rows | **71ms** | **46× slower** |
+
+> **Note:** OSON encoding overhead is client-side — the `oracledb` driver serializes the full Python dict to Oracle binary JSON before the INSERT. At large payload sizes (~100KB), this dominates. The 46× gap at real sizes is significantly larger than the 20× gap seen in micro-benchmarks with small payloads.
+
+**Per-commit overhead (individual row commits vs batched):**
+- Batched commits (50 rows): OSON ~22ms/row
+- Individual commits (1 row/commit): OSON ~71ms/row
+- Difference attributable to redo log fsync per commit
+
+---
+
+### Benchmark 3: Micro-Benchmark (Prior Session) — Small Payload Baseline
+
+Measured in isolation using `exploration/ingest_bench.py` with synthetic small JSON payloads:
+
+| Operation | CLOB | OSON | Ratio |
+|---|---|---|---|
+| INSERT only (batched, 50 rows) | ~1ms/row | ~22ms/row | 22× |
+| End-to-end incl. API fetch (~200ms latency) | — | — | ~1.1× (API dominates) |
+
+**Key finding:** At small payloads, OSON write penalty is 22×. API network latency (~200ms/call) masks the difference end-to-end (~10% slower). At real NHL game document sizes (~100KB), the OSON penalty grows to 46×.
+
+---
+
+### Summary & Conclusions
+
+| Question | Answer |
+|---|---|
+| Does file staging before insert improve speed? | No — +0.5% overhead on first run |
+| Is file staging worth implementing? | Yes — enables 273× faster reloads from cache |
+| Should production use OSON or CLOB? | **CLOB** — 46× faster inserts at real payload sizes |
+| What bottleneck dominates Bronze ingestion? | NHL API network latency (99.1% of total pipeline time) |
+| What is the reload cost from disk cache? | 13.3s for full 6-season backfill (4,569 rows) |
+
+**Architecture recommendation:** Keep the production v1 inline pipeline (`load_nhl.py` → `bronze_schema` CLOB). Use `load_nhl_v3_exp.py --extract-only` to warm the disk cache during initial backfill, then `--load-only --target bronze` for any subsequent schema reloads.
+
+---
+
+**Benchmark Date:** March 1, 2026
+**Platform:** Oracle 23ai Free (Docker), thin mode oracledb driver
+**Schema:** `bronze_schema` (CLOB columns), `bronze_2` (native JSON/OSON columns)
+**Dataset:** 6 seasons, 4,125 games, ~131.7MB raw JSON cache
+
+---
+
 ## Executive Summary
 
 Comprehensive testing of the Oracle 26ai-powered semantic search platform reveals strong performance across multiple dimensions: query accuracy, semantic understanding, and sub-second response times over 9,744 vectorized narratives.
